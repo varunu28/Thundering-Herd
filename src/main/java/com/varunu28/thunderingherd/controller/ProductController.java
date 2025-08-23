@@ -5,6 +5,7 @@ import com.varunu28.thunderingherd.dto.GetProductDto;
 import com.varunu28.thunderingherd.exception.ProductNotFoundException;
 import com.varunu28.thunderingherd.model.Product;
 import com.varunu28.thunderingherd.service.ProductService;
+import io.micrometer.tracing.annotation.NewSpan;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +28,7 @@ public class ProductController {
         this.productService = productService;
     }
 
+    @NewSpan("create-product")
     @PostMapping(consumes = APPLICATION_JSON_VALUE, produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<UUID> createProduct(@RequestBody @Valid CreateProductDto createProductDto) {
         UUID productId = productService.createProduct(
@@ -37,6 +39,7 @@ public class ProductController {
         return ResponseEntity.ok(productId);
     }
 
+    @NewSpan("get-product")
     @GetMapping(value = "/{id}", produces = APPLICATION_JSON_VALUE)
     public ResponseEntity<GetProductDto> getProduct(@PathVariable UUID id) throws ProductNotFoundException {
         Product productById = productService.getProductById(id);

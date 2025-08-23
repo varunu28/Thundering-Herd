@@ -1,9 +1,24 @@
 spring:
   application:
     name: thundering-herd
+
 server:
   port: 8080
 
 logging:
+  pattern:
+    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-}] "
+  include-application-name: false
   level:
     web: trace
+
+management:
+  observations:
+    annotations:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0 # 100% sampling for demonstration purposes
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
