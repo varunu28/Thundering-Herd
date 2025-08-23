@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: thundering-herd
+server:
+  port: 8080
+
+logging:
+  level:
+    web: trace
