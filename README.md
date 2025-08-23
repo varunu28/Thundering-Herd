@@ -2,10 +2,8 @@
 Spring boot project to demonstrate a thundering herd problem &amp; its solution
 
 ## Checkpoints
- - [Commit with thundering herd problem](https://github.
-   com/varunu28/Thundering-Herd/tree/f11a07db2dfa62245430b52badbf3128866bb3c5) :x:
- - [Commit with thundering herd problem fixed](https://github.
-   com/varunu28/Thundering-Herd/tree/08c199bad9e13c0d86a4707435f5d152aeb3b01f) :white_check_mark:
+ - [Commit with thundering herd problem](https://github.com/varunu28/Thundering-Herd/tree/f11a07db2dfa62245430b52badbf3128866bb3c5) :x:
+ - [Commit with thundering herd problem fixed](https://github.com/varunu28/Thundering-Herd/tree/08c199bad9e13c0d86a4707435f5d152aeb3b01f) :white_check_mark:
 
 ## How to run?
 - Start the Spring Boot application 
