@@ -149,10 +149,7 @@ public class ProductService {
         for (int i = 0; i < maxRetries; i++) {
             try {
                 Thread.sleep(retryDelayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Thread interrupted while waiting for cache", e);
-            }
+            } catch (InterruptedException ignored) {}
 
             Span redisLookupSpan = tracer.nextSpan()
                 .name("product.findById")

@@ -1,12 +1,16 @@
 # Thundering-Herd [![codecov](https://codecov.io/github/varunu28/Thundering-Herd/graph/badge.svg?token=AZIAO39QG5)](https://codecov.io/github/varunu28/Thundering-Herd)
-Spring boot project to demonstrate thundering herd problem &amp; its solution
+Spring boot project to demonstrate a thundering herd problem &amp; its solution
+
+## Checkpoints
+ - [Commit with thundering herd problem](https://github.
+   com/varunu28/Thundering-Herd/tree/f11a07db2dfa62245430b52badbf3128866bb3c5) :x:
+ - [Commit with thundering herd problem fixed](https://github.
+   com/varunu28/Thundering-Herd/tree/08c199bad9e13c0d86a4707435f5d152aeb3b01f) :white_check_mark:
 
 ## How to run?
 - Start the Spring Boot application 
-- Run the following Go program (`go run main.go <product_id>`) to send concurrent requests for the GET endpoint to
-  trigger
-  thundering 
-herd
+- Run the following Go program (`go run main.go <product_id>`) to send concurrent requests for the GET endpoint to 
+  trigger thundering herd
 
 ```go
 package main

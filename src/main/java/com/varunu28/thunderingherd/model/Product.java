@@ -41,6 +41,11 @@ public class Product {
         this.launchedAt = new Date();
     }
 
+    public Product(UUID id, String name, String description, BigDecimal price) {
+        this(name, description, price);
+        this.id = id;
+    }
+
     public UUID getId() {
         return id;
     }
