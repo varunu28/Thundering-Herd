@@ -3,7 +3,8 @@ Spring boot project to demonstrate thundering herd problem &amp; its solution
 
 ## How to run?
 - Start the Spring Boot application 
-- Run the following Go program (`go run main.go`) to send concurrent requests for the GET endpoint to trigger 
+- Run the following Go program (`go run main.go <product_id>`) to send concurrent requests for the GET endpoint to
+  trigger
   thundering 
 herd
 
@@ -14,14 +15,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 )
 
 func main() {
+	args := os.Args
+	if len(args) != 2 {
+		fmt.Println("Usage: go run main.go <product_id>")
+		return
+	}
+
 	numRequests := 5
 	var wg sync.WaitGroup
 
-	productId := "<PRODUCT_ID>"
+	productId := os.Args[1]
 	url := fmt.Sprintf("http://localhost:8080/api/v1/products/%s", productId)
 
 	// Channel to signal all goroutines to start simultaneously
