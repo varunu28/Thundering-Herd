@@ -1,5 +1,8 @@
 # Thundering-Herd [![codecov](https://codecov.io/github/varunu28/Thundering-Herd/graph/badge.svg?token=AZIAO39QG5)](https://codecov.io/github/varunu28/Thundering-Herd)
-Spring boot project to demonstrate a thundering herd problem &amp; its solution
+Spring boot project to demonstrate a thundering herd problem &amp; its solution. 
+
+## Blog post
+[Thundering Herd Problem: Preventing the Stampede](https://distributed-computing-musings.com/2025/08/thundering-herd-problem-preventing-the-stampede/)
 
 ## Checkpoints
  - [Commit with thundering herd problem](https://github.com/varunu28/Thundering-Herd/tree/f11a07db2dfa62245430b52badbf3128866bb3c5) :x:
