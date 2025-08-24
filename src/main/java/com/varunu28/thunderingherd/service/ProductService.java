@@ -10,10 +10,10 @@ import io.micrometer.tracing.annotation.SpanTag;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.UUID;
-import org.springframework.data.redis.connection.ReturnType;
-import org.springframework.data.redis.core.RedisCallback;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -25,16 +25,16 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final Tracer tracer;
     private final RedisTemplate<String, Product> redisTemplate;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final ConcurrentHashMap<UUID, CompletableFuture<Product>> ongoingRequests;
 
     public ProductService(
         ProductRepository productRepository,
         Tracer tracer,
-        RedisTemplate<String, Product> redisTemplate, StringRedisTemplate stringRedisTemplate) {
+        RedisTemplate<String, Product> redisTemplate) {
         this.productRepository = productRepository;
         this.tracer = tracer;
         this.redisTemplate = redisTemplate;
-        this.stringRedisTemplate = stringRedisTemplate;
+        this.ongoingRequests = new ConcurrentHashMap<>();
     }
 
     @ContinueSpan
@@ -57,13 +57,8 @@ public class ProductService {
     @ContinueSpan
     public Product getProductById(@SpanTag("product.id") UUID id) throws ProductNotFoundException {
         String cacheKey = PRODUCT_CACHE_KEY_PREFIX + id;
-
-        Span redisLookupSpan = tracer.nextSpan()
-            .name("product.findById")
-            .tag("operation", "cacheLookup")
-            .tag("product.name", cacheKey)
-            .tag("product.id", id.toString())
-            .start();
+        // Perform a cache lookup first
+        Span redisLookupSpan = buildSpan("cacheLookup", cacheKey, id);
         try (Tracer.SpanInScope ignored = tracer.withSpan(redisLookupSpan)) {
             Product productFromCache = redisTemplate.opsForValue().get(cacheKey);
             if (productFromCache != null) {
@@ -73,113 +68,53 @@ public class ProductService {
             redisLookupSpan.end();
         }
 
-        String lockKey = cacheKey + ":lock";
-        String lockValue = UUID.randomUUID().toString();
-        Duration lockTtl = Duration.ofSeconds(10);
-        Boolean lockAcquired = stringRedisTemplate.opsForValue()
-            .setIfAbsent(lockKey, lockValue, lockTtl);
-        if (Boolean.TRUE.equals(lockAcquired)) {
-            // This is required to avoid a race condition where another thread could acquire the lock and backfills the
-            // cache in between the current thread checks the cache and acquires the lock.
-            Span redisDoubleCheckSpan = tracer.nextSpan()
-                .name("product.findById")
-                .tag("operation", "doubleCheckCacheLookup")
-                .tag("product.name", cacheKey)
-                .tag("product.id", id.toString())
-                .start();
-            try (Tracer.SpanInScope ignored = tracer.withSpan(redisDoubleCheckSpan)) {
-                Product productFromCache = redisTemplate.opsForValue().get(cacheKey);
-                if (productFromCache != null) {
-                    return productFromCache;
-                }
-            } finally {
-                redisDoubleCheckSpan.end();
-            }
+        // If not found in the cache, perform a database lookup and backfill the cache
+        CompletableFuture<Product> future = ongoingRequests.computeIfAbsent(id,
+            productId -> {
+            Span currentSpan = tracer.currentSpan();
+            return CompletableFuture.supplyAsync(() -> {
+                try (Tracer.SpanInScope ignoredSpan = tracer.withSpan(currentSpan)) {
+                    Span postgresLookupSpan = buildSpan("dbLookup", cacheKey, id);
+                    Product product;
+                    try (Tracer.SpanInScope ignored = tracer.withSpan(postgresLookupSpan)) {
+                        product = productRepository.findById(id)
+                            .orElseThrow(() -> new ProductNotFoundException(id));
+                    } finally {
+                        postgresLookupSpan.end();
+                    }
 
-            try {
-                Span postgresLookupSpan = tracer.nextSpan()
-                    .name("product.findById")
-                    .tag("operation", "dbLookup")
-                    .tag("product.name", cacheKey)
-                    .tag("product.id", id.toString())
-                    .start();
-
-                Product product;
-                try (Tracer.SpanInScope ignored = tracer.withSpan(postgresLookupSpan)) {
-                    product = productRepository.findById(id)
-                        .orElseThrow(() -> new ProductNotFoundException(id));
-                } finally {
-                    postgresLookupSpan.end();
-                }
-
-                Span redisBackfillSpan = tracer.nextSpan()
-                    .name("product.findById")
-                    .tag("operation", "cacheBackfill")
-                    .tag("product.name", cacheKey)
-                    .tag("product.id", id.toString())
-                    .start();
-                try (Tracer.SpanInScope ignored = tracer.withSpan(redisBackfillSpan)) {
-                    redisTemplate.opsForValue().set(cacheKey, product, CACHE_TTL);
-                } finally {
-                    redisBackfillSpan.end();
-                }
-
-                return product;
-            } finally {
-                releaseLock(lockKey, lockValue);
-            }
-        } else {
-            return waitAndRetryFromCache(cacheKey, id);
-        }
-    }
-
-    private void releaseLock(String lockKey, String lockValue) {
-        String script =
-            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
-        stringRedisTemplate.execute((RedisCallback<Long>) connection ->
-            connection.eval(
-                script.getBytes(), ReturnType.INTEGER, 1,
-                lockKey.getBytes(), lockValue.getBytes()));
-    }
-
-    private Product waitAndRetryFromCache(String cacheKey, UUID id) throws ProductNotFoundException {
-        int maxRetries = 10;
-        int retryDelayMs = 100;
-
-        for (int i = 0; i < maxRetries; i++) {
-            try {
-                Thread.sleep(retryDelayMs);
-            } catch (InterruptedException ignored) {}
-
-            Span redisLookupSpan = tracer.nextSpan()
-                .name("product.findById")
-                .tag("operation", "retryCacheLookup")
-                .tag("retryCount", Integer.toString(i))
-                .tag("product.name", cacheKey)
-                .tag("product.id", id.toString())
-                .start();
-            try (Tracer.SpanInScope ignored = tracer.withSpan(redisLookupSpan)) {
-                Product product = redisTemplate.opsForValue().get(cacheKey);
-                if (product != null) {
+                    // Backfill the cache
+                    Span redisBackfillSpan = buildSpan("cacheBackfill", cacheKey, id);
+                    try (Tracer.SpanInScope ignored = tracer.withSpan(redisBackfillSpan)) {
+                        redisTemplate.opsForValue().set(cacheKey, product, CACHE_TTL);
+                    } finally {
+                        redisBackfillSpan.end();
+                    }
                     return product;
+                } finally {
+                    ongoingRequests.remove(productId);
                 }
-            } finally {
-                redisLookupSpan.end();
+            });
+        });
+        try {
+            return future.get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof ProductNotFoundException) {
+                throw (ProductNotFoundException) e.getCause();
             }
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
         }
+    }
 
-        // Fallback to the database if the cache is still empty
-        Span postgresLookupSpan = tracer.nextSpan()
+    private Span buildSpan(String operation, String productName, UUID productId) {
+        return tracer.nextSpan()
             .name("product.findById")
-            .tag("operation", "fallBackDbLookup")
-            .tag("product.name", cacheKey)
-            .tag("product.id", id.toString())
+            .tag("operation", operation)
+            .tag("product.name", productName)
+            .tag("product.id", productId.toString())
             .start();
-        try (Tracer.SpanInScope ignored = tracer.withSpan(postgresLookupSpan)) {
-            return productRepository.findById(id)
-                .orElseThrow(() -> new ProductNotFoundException(id));
-        } finally {
-            postgresLookupSpan.end();
-        }
     }
 }
